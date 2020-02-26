@@ -1,0 +1,22 @@
+{
+  "name": "distributed_processing_orchestrator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dofamin1/DISTRIBUTED_PROCESSING_ORCHESTRATOR.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Dofamin1/DISTRIBUTED_PROCESSING_ORCHESTRATOR/issues"
+  },
+  "homepage": "https://github.com/Dofamin1/DISTRIBUTED_PROCESSING_ORCHESTRATOR#readme",
+  "dependencies": {
+    "cote": "^1.0.0"
+  }
+}

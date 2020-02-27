@@ -1,47 +1,30 @@
-const cote = require("cote");
 const { log } = require("./helpers")
+const EventController = require('./eventController')
 const exampleTask = {
     command: 'do something'
-}
-
-class EventController {
-    constructor() {
-        this.requester = new cote.Requester({ name: 'Orchestrator Requester' });
-        this.publisher = new cote.Publisher({
-            name: 'Orchestrator Publisher',
-            broadcasts: ['task'],
-        });
-    }
-
-    publishEvent({ eventName, val}) {
-        log(`EVENT ${eventName} PUBLISHED`)
-
-        this.publisher.publish(eventName, val);
-    }
-
-    sendEvent({ type, value }, callback) {
-        log(`EVENT ${type} SENDED`)
-
-        this.requester.send({ type, value }, response => {
-          callback(response);
-        });
-    }
 }
 
 class Orchestrator {
     constructor() {
         this.eventController = new EventController();
         this.connectedWorkers = [];
+        this.eventsToBroadcast = ['task'];
         this.masterUuid;
         this._startTochekIfAliveWorkers();
     }
 
-    sendTask() {
-        this.eventController.publishEvent({ eventName: 'task', val: JSON.stringify(exampleTask) })
+    sendTask(task) {
+        this.eventController.publishEvent({ eventName: 'task', val: JSON.stringify(task) })
     }
 
     startSendingTasks() {
-        setInterval(this.sendTask.bind(this), 10000)
+        const task = this._getTask()
+        const sendTask = this.sendTask.bind(this)
+        setInterval(() => sendTask(task), 10000)
+    }
+
+    _getTask() {
+        return exampleTask //TODO: remove hardcode
     }
 
     _startTochekIfAliveWorkers() {

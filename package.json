@@ -18,6 +18,8 @@
   },
   "homepage": "https://github.com/Dofamin1/DISTRIBUTED_PROCESSING_ORCHESTRATOR#readme",
   "dependencies": {
-    "cote": "^1.0.0"
+    "cote": "^1.0.0",
+    "docker-cli-js": "^2.7.1",
+    "ioredis": "^4.16.0"
   }
 }

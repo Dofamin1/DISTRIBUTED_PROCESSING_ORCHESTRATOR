@@ -11,13 +11,12 @@ class EventController {
     }
 
     publishEvent({ eventName, val}) {
-        log(`EVENT ${eventName} PUBLISHED`)
-
+        log(`EVENT ${eventName} PUBLISHED`);
         this.publisher.publish(eventName, val);
     }
 
     sendEvent({ type, value }, callback) {
-        log(`EVENT ${type} SENDED`)
+        log(`EVENT ${type} SENDED`);
 
         this.requester.send({ type, value }, response => {
           callback(response);

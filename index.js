@@ -1,48 +1,80 @@
-const { log } = require("./helpers")
-const EventController = require('./eventController')
-const exampleTask = {
-    command: 'do something'
-}
+const {log} = require("./helpers");
+const uuid = require("uuid");
+const EventController = require('./eventController');
+const Redis = require('ioredis');
+const RedisDbClient = require('db/redisDbClient');
 
 class Orchestrator {
-    constructor() {
+    constructor(dbClient, nodeRunner) {
         this.eventController = new EventController();
-        this.connectedWorkers = [];
-        this.eventsToBroadcast = ['task'];
+        this.dbClient = dbClient;
+        this.nodeRunner = nodeRunner;
+        this.observedNodes = [];
         this.masterUuid;
-        this._startTochekIfAliveWorkers();
+        this.freeNodes = [];
+        this.freeNodes.push = (item) => {
+            Array.prototype.push.call(this, item);
+            this._doForward();
+        };
     }
 
-    sendTask(task) {
-        this.eventController.publishEvent({ eventName: 'task', val: JSON.stringify(task) })
+    listenNodes() {
+        const checkIfAlive = () => this.eventController.sendEvent(
+            {type: 'status'},
+            res => {
+                if (res.free) {
+                    this.freeNodes.push({})
+                }
+
+            }
+        );
+        setInterval(checkIfAlive, 10000);
+        return this;
     }
 
-    startSendingTasks() {
-        const task = this._getTask()
-        const sendTask = this.sendTask.bind(this)
-        setInterval(() => sendTask(task), 10000)
+    forwardTasks() {
+        this._doForward();
+        return this;
     }
 
-    _getTask() {
-        return exampleTask //TODO: remove hardcode
+    runNodes() {
+        return this.observedNodes.map(node => this.nodeRunner.run(node));
     }
 
-    _startTochekIfAliveWorkers() {
-        const checkIfAlive = () => this.eventController.sendEvent({ type: 'checkIfAlive' }, res => {
-            res.role == "master" ? this._saveMasterUuid(res.uuid) : this._saveWorkerUuid(res.uuid);
+    _doForward() {
+        this.freeNodes.map(node => {
+            return this.dbClient.nextTask()
+                .then(task => {
+                    if (task) this._sendTask(node, task)
+                });
         });
-        setInterval(checkIfAlive, 1000)
     }
 
-    _saveWorkerUuid(uuid){
-        this.connectedWorkers.push(uuid);
+    withNodes(nodes) {
+        this.observedNodes.push(nodes);
     }
-    _saveMasterUuid(uuid) {
-        this.masterUuid = uuid;
+
+    _sendTask(node, task) {
+        this.eventController.publishEvent({
+            eventName: 'task',
+            val: JSON.stringify(task)
+        });
     }
-    
 }
 
-const orchestrator = new Orchestrator();
+const redisDbClient = new RedisDbClient(new Redis());
+const nodeRunner = new DockerNodeRunner();
 
-orchestrator.startSendingTasks();
+const orchestrator = new Orchestrator(redisDbClient, nodeRunner)
+    .withNodes([
+        {host: 'localhost', port: 7777, id: uuid},
+        {host: 'localhost', port: 8888}
+    ]);
+
+orchestrator.runNodes()
+    .then(() => {
+        orchestrator
+            .listenNodes()
+            .forwardTasks();
+    });
+

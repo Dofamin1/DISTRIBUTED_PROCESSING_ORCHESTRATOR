@@ -1,4 +1,4 @@
-const {log} = require("./helpers");
+const {log, levels} = require("./helpers");
 const EventController = require('./eventController');
 const dockerRunnerInitializer = require('./node/DockerNodeRunner');
 // noinspection SpellCheckingInspection
@@ -25,6 +25,7 @@ class Orchestrator {
             await this._runFailedNodes();
             this.statusLast.clear();
             this.eventController.sendEvent({type: 'status'}, res => {
+                log(`I have got result`, levels.DEBUG);
                 this.statusLast.set(res.uuid, res.role);
             });
         }, this.timeout);
@@ -34,22 +35,23 @@ class Orchestrator {
         return Promise.all(
             this.observedNodes.map(node => this._runNode(node))
         )
-        .then(() => log(`Nodes is runner`));
+        .then(() => log(`Nodes are run`));
     }
 
     withNodes(nodes) {
-        log(`Nodes {alive: ${this.statusLast.size}, total: ${this.observedNodes.length}}`);
         this.observedNodes.push(...nodes);
         nodes.forEach(node => this.statusLast.set(node.uuid, node.role));
+        log(`Nodes {alive: ${this.statusLast.size}, total: ${this.observedNodes.length}}`);
         return this;
     }
 
     shutDown() {
         log('init shutdown');
         return Promise.all(
-            this.observedNodes.map(node => this.nodeRunner.stop({containerId: node.uuid}))
+            this.observedNodes.map(node => this.nodeRunner.stop({containerId: node.uuid})
+                .then(() => this.nodeRunner.remove({containerId: node.uuid})))
         )
-        .then(() => log('Is turned of'));
+        .then(() => log('Instances are turned of and removed'));
     }
 
     _runNode(node) {
@@ -61,14 +63,21 @@ class Orchestrator {
         });
     }
 
+    _cleanUpNode(node) {
+        return this.nodeRunner.remove({containerId: node.uuid});
+    }
+
     _runFailedNodes() {
         return new Promise(resolve => {
             log(`Nodes {alive: ${this.statusLast.size}, total: ${this.observedNodes.length}}`);
             if (this.statusLast.size !== this.observedNodes.length) {
                 const failedNodes = this.observedNodes.filter(node => !this.statusLast.get(node.uuid));
-                Promise.all(failedNodes.map(node => this._runNode(node)))
-                    .then(() => resolve(failedNodes.length))
-                    .then(() => log(`Failed nodes is recovered: ${failedNodes}`));
+                Promise.all(failedNodes.map(node =>
+                    this._cleanUpNode(node).then(() => this._runNode(node))
+                    )
+                )
+                .then(() => resolve(failedNodes.length))
+                .then(() => log(`Failed nodes is recovered: ${failedNodes}`));
             } else {
                 resolve(0);
             }
@@ -79,7 +88,7 @@ class Orchestrator {
 const NODE = 'node';
 const MASTER = 'master';
 
-dockerRunnerInitializer("dopamin1/distributed_processing_node")
+dockerRunnerInitializer("nodes")
     .then(nodeRunner => new Orchestrator(nodeRunner)
         .withNodes([
             {host: 'localhost', port: 7777, uuid: uuidv4(), role: MASTER},

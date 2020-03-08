@@ -1,51 +1,56 @@
-const dockerCLI = require('docker-cli-js');
-const {log} = require("../helpers");
-const DEFAULT_OPTIONS = { machineName: null, currentWorkingDirectory: null, echo: false};
+const dockerCLI = require("docker-cli-js");
+const { log } = require("../helpers");
+const DEFAULT_OPTIONS = {
+  machineName: null,
+  currentWorkingDirectory: null,
+  echo: false
+};
 
 class LocalDockerNodeRunner {
-    constructor(imageName, docker) {
-        this.docker = docker;
-        this.imageName = imageName;
-    }
+  constructor(imageName, docker) {
+    this.docker = docker;
+    this.imageName = imageName;
+  }
 
-    try(command) {
-        return new Promise(resolve => {
-            command.then(() => resolve())
-               .catch(() => resolve);
-        });
-    }
+  try(command) {
+    return new Promise(resolve => {
+      command.then(() => resolve()).catch(() => resolve);
+    });
+  }
 
-    run({host, port, args, containerId}) {
-        const command = `run --net="host" -d --name ${containerId} -p ${port}:${port} ${this.imageName} ${args}`;
-        log(`executing: ${command}`);
-        return this.docker.command(command);
-    }
+  run({ host, port, args, containerId }) {
+    const command = `run --net="host" -d --name ${containerId} -p ${port}:${port} ${
+      this.imageName
+    } ${args}`;
+    log(`executing: ${command}`);
+    return this.docker.command(command);
+  }
 
-    stop({ containerId }) {
-        const stopCommand = `stop ${containerId}`;
+  stop({ containerId }) {
+    const stopCommand = `stop ${containerId}`;
 
-        log(`executing: ${stopCommand}`);
-        return this.docker.command(stopCommand);
-    }
+    log(`executing: ${stopCommand}`);
+    return this.docker.command(stopCommand);
+  }
 
-    remove({ containerId }) {
-        const rmCommand = `rm ${containerId}`;
-        log(`executing ${rmCommand}`);
-        return this.docker.command(rmCommand);
-    }
+  remove({ containerId }) {
+    const rmCommand = `rm ${containerId}`;
+    log(`executing ${rmCommand}`);
+    return this.docker.command(rmCommand);
+  }
 }
 
 function ofExceptionalPromise(promise) {
-    return new Promise(resolve => {
-        promise.then(() => resolve())
-            .catch(() => resolve());
-    })
+  return new Promise(resolve => {
+    promise.then(() => resolve()).catch(() => resolve());
+  });
 }
 
 module.exports = function create(imageName, options = DEFAULT_OPTIONS) {
-    const docker = new dockerCLI.Docker(options);
-    const command = `pull ${imageName}`;
-    log(`executing: ${command}`);
-    return ofExceptionalPromise(docker.command(command))
-        .then(() => new LocalDockerNodeRunner(imageName, docker));
+  const docker = new dockerCLI.Docker(options);
+  const command = `pull ${imageName}`;
+  log(`executing: ${command}`);
+  return ofExceptionalPromise(docker.command(command)).then(
+    () => new LocalDockerNodeRunner(imageName, docker)
+  );
 };

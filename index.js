@@ -1,8 +1,8 @@
-const { log, levels } = require("./helpers");
+const { log, levels, generateUUID } = require("./helpers");
 const EventController = require("./eventController");
 const dockerRunnerInitializer = require("./node/DockerNodeRunner");
+const { ENVIRONMENT } = process.env;
 // noinspection SpellCheckingInspection
-const uuidv4 = require("uuid/v4");
 
 const DEFAULT_TIMEOUT = 10000;
 
@@ -32,6 +32,10 @@ class Orchestrator {
   }
 
   runNodes() {
+    if (ENVIRONMENT == "local") {
+      return;
+    }
+
     return Promise.all(
       this.observedNodes.map(node => this._runNode(node))
     ).then(() => log(`Nodes are run`));
@@ -56,8 +60,7 @@ class Orchestrator {
           .stop({ containerId: node.uuid })
           .then(() => this.nodeRunner.remove({ containerId: node.uuid }))
       )
-    )
-    .then(() => log("Instances are turned of and removed"));
+    ).then(() => log("Instances are turned of and removed"));
   }
 
   _runNode(node) {
@@ -104,8 +107,13 @@ const MASTER = "master";
 dockerRunnerInitializer("nodes")
   .then(nodeRunner =>
     new Orchestrator(nodeRunner).withNodes([
-      { host: "localhost", port: 7777, uuid: uuidv4(), role: MASTER },
-      { host: "localhost", port: 8888, uuid: uuidv4(), role: NODE }
+      {
+        host: "localhost",
+        port: 7777,
+        uuid: generateUUID("master"),
+        role: MASTER
+      },
+      { host: "localhost", port: 8888, uuid: generateUUID("node"), role: NODE }
     ])
   )
   .then(orchestrator =>

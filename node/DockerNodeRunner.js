@@ -5,6 +5,7 @@ const DEFAULT_OPTIONS = {
   currentWorkingDirectory: null,
   echo: false
 };
+const { ENVIRONMENT } = process.env;
 
 class LocalDockerNodeRunner {
   constructor(imageName, docker) {
@@ -50,7 +51,12 @@ module.exports = function create(imageName, options = DEFAULT_OPTIONS) {
   const docker = new dockerCLI.Docker(options);
   const command = `pull ${imageName}`;
   log(`executing: ${command}`);
-  return ofExceptionalPromise(docker.command(command)).then(
-    () => new LocalDockerNodeRunner(imageName, docker)
-  );
+
+  if (ENVIRONMENT == "docker") {
+    return ofExceptionalPromise(docker.command(command)).then(
+      () => new LocalDockerNodeRunner(imageName, docker)
+    );
+  } else if (ENVIRONMENT == "local") {
+    return new Promise.resolve();
+  }
 };

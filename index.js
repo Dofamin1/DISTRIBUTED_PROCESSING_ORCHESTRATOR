@@ -1,10 +1,35 @@
-const { log, levels, generateUUID } = require("./helpers");
+const {log, levels, generateUUID} = require("./helpers");
 const EventController = require("./eventController");
-const dockerRunnerInitializer = require("./node/DockerNodeRunner");
-const { ENVIRONMENT } = process.env;
+const NodeRunners = require("./node/DockerNodeRunner");
+const {ENVIRONMENT} = process.env;
 // noinspection SpellCheckingInspection
 
 const DEFAULT_TIMEOUT = 10000;
+
+function ofDelayPromise(promise, timeout) {
+  return new Promise((resolve, reject) => {
+    let isComplete = false;
+    const timeoutHandler = () => {
+      if (!isComplete) {
+        reject(new Error("Time is out"));
+        isComplete = true;
+      }
+    };
+    setTimeout(timeoutHandler, timeout);
+    promise.then(res => {
+      if (!isComplete) {
+        resolve(res);
+        isComplete = true;
+      }
+    });
+    promise.catch(e => {
+      if (!isComplete) {
+        reject(e);
+        isComplete = true;
+      }
+    })
+  })
+}
 
 class Orchestrator {
   constructor(nodeRunner, timeout = DEFAULT_TIMEOUT) {
@@ -15,27 +40,44 @@ class Orchestrator {
     this.statusLast = new Map();
   }
 
-  listenNodes() {
-    setInterval(async () => {
-      log("Status is being checked");
-      this.eventController.publishEvent({
-        eventName: "nodes_list",
-        val: Array.from(this.statusLast.keys())
-      });
-      await this._runFailedNodes();
-      this.statusLast.clear();
-      this.eventController.sendEvent({ type: "status" }, res => {
-        log(`I have got result`, levels.DEBUG);
-        this.statusLast.set(res.uuid, res.role);
-      });
-    }, this.timeout);
+  async listenNodes() {
+    log("Status is being checked");
+    return this._sendEvents()
+      .then(() => this._publishNodeList())
+      .catch(() => this._runFailedNodes())
+      .then(() => this.statusLast.clear())
+      .then(() => this.listenNodes());
   }
 
-  runNodes() {
-    if (ENVIRONMENT == "local") {
-      return;
-    }
+  _sendEvents() {
+    return Promise.all(this.observedNodes.map(node => {
+        let isFailed = false;
+        return new Promise((resolve, reject) => {
+          let isComplete = false;
 
+          this.eventController.sendEvent({type: `status_${node.uuid}`}, res => {
+            if (isFailed) {
+              log(`Rejected status from UUID: ${res.uuid} with role: ${res.role}`, levels.DEBUG)
+            } else {
+              log(`There is status from UUID: ${res.uuid} with role: ${res.role}`, levels.DEBUG);
+              this.statusLast.set(res.uuid, res.role);
+            }
+            resolve();
+            isComplete = true;
+          });
+          const handler = () => {
+            if (!isComplete) {
+              isFailed = true;
+              reject();
+            }
+          };
+          setTimeout(handler, this.timeout);
+        })
+      })
+    );
+  };
+
+  runNodes() {
     return Promise.all(
       this.observedNodes.map(node => this._runNode(node))
     ).then(() => log(`Nodes are run`));
@@ -57,23 +99,21 @@ class Orchestrator {
     return Promise.all(
       this.observedNodes.map(node =>
         this.nodeRunner
-          .stop({ containerId: node.uuid })
-          .then(() => this.nodeRunner.remove({ containerId: node.uuid }))
+          .stop({nodeUUID: node.uuid})
+          .then(() => this.nodeRunner.remove({nodeUUID: node.uuid}))
       )
     ).then(() => log("Instances are turned of and removed"));
   }
 
   _runNode(node) {
     return this.nodeRunner.run({
-      host: node.host,
-      port: node.port,
       args: `FIRST_START_NODE_STATUS=${node.isMaster} UUID=${node.uuid}`,
-      containerId: node.uuid
+      nodeUUID: node.uuid
     });
   }
 
   _cleanUpNode(node) {
-    return this.nodeRunner.remove({ containerId: node.uuid });
+    return this.nodeRunner.remove({nodeUUID: node.uuid});
   }
 
   _runFailedNodes() {
@@ -93,32 +133,39 @@ class Orchestrator {
           )
         )
           .then(() => resolve(failedNodes.length))
-          .then(() => log(`Failed nodes is recovered: ${failedNodes}`));
+          .then(() => failedNodes.length !== 0 ? log(`Failed nodes is recovered`) : null);
       } else {
         resolve(0);
       }
     });
   }
+
+  _publishNodeList() {
+    this.eventController.publishEvent({
+      eventName: "nodes_list",
+      val: Array.from(this.statusLast.keys())
+    });
+  }
 }
 
-const NODE = "node";
+const WORKER = "worker";
 const MASTER = "master";
 
-dockerRunnerInitializer("nodes")
+const nodeRunnerPromise = ENVIRONMENT === 'docker' ?
+  NodeRunners.creteDockerRunner('nodes') :
+  ENVIRONMENT === 'local' ?
+    NodeRunners.createLoggableRunner() :
+    Promise.reject(new Error("ENVIRONMENT is not defined"));
+
+nodeRunnerPromise
   .then(nodeRunner =>
     new Orchestrator(nodeRunner).withNodes([
-      {
-        host: "localhost",
-        port: 7777,
-        uuid: generateUUID("master"),
-        role: MASTER
-      },
-      { host: "localhost", port: 8888, uuid: generateUUID("node"), role: NODE }
+      {uuid: MASTER, role: MASTER},
+      {uuid: WORKER, role: WORKER}
     ])
   )
   .then(orchestrator =>
     orchestrator
       .runNodes()
       .then(() => orchestrator.listenNodes())
-      .then(() => setTimeout(orchestrator.shutDown, 90000))
   );

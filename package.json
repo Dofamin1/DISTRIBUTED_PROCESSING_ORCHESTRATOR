@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "ENVIRONMENT=docker LOGGER=true LEVEL=1 node ./index.js",
-    "start_local": "ENVIRONMENT=local LOGGER=true LEVEL=1 node ./index.js"
+    "start": "COTE_DISCOVERY_REDIS=true ENVIRONMENT=docker LOGGER=true LEVEL=1 node ./index.js",
+    "start_local": "COTE_DISCOVERY_REDIS=true ENVIRONMENT=local LOGGER=true LEVEL=1 node ./index.js"
   },
   "repository": {
     "type": "git",

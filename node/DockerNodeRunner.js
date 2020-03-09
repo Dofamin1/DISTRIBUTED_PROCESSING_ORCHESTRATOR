@@ -1,5 +1,5 @@
 const dockerCLI = require("docker-cli-js");
-const { log } = require("../helpers");
+const { log, levels } = require("../helpers");
 const DEFAULT_OPTIONS = {
   machineName: null,
   currentWorkingDirectory: null,
@@ -19,25 +19,46 @@ class LocalDockerNodeRunner {
     });
   }
 
-  run({ host, port, args, containerId }) {
-    const command = `run --net="host" -d --name ${containerId} -p ${port}:${port} ${
-      this.imageName
-    } ${args}`;
+  run({ host, port, args, nodeUUID }) {
+    const command = `run --net="host" -d --name ${nodeUUID} ${this.imageName} ${args}`;
     log(`executing: ${command}`);
     return this.docker.command(command);
   }
 
-  stop({ containerId }) {
-    const stopCommand = `stop ${containerId}`;
+  stop({ nodeUUID }) {
+    const stopCommand = `stop ${nodeUUID}`;
 
     log(`executing: ${stopCommand}`);
     return this.docker.command(stopCommand);
   }
 
-  remove({ containerId }) {
-    const rmCommand = `rm ${containerId}`;
+  remove({ nodeUUID }) {
+    const rmCommand = `rm ${nodeUUID}`;
     log(`executing ${rmCommand}`);
     return this.docker.command(rmCommand);
+  }
+}
+
+class LoggableNodeRunner {
+  try(command) {
+    return new Promise(resolve => {
+      command.then(() => resolve()).catch(() => resolve);
+    });
+  }
+
+  run({ args, nodeUUID }) {
+    log(`Run node with UUID: ${nodeUUID}`, levels.DEBUG);
+    return Promise.resolve();
+  }
+
+  stop({ nodeUUID }) {
+    log(`Stop node with UUID: ${nodeUUID}`, levels.DEBUG);
+    return Promise.resolve();
+  }
+
+  remove({ nodeUUID }) {
+    log(`Remove node with UUID: ${nodeUUID}`, levels.DEBUG);
+    return Promise.resolve();
   }
 }
 
@@ -47,16 +68,17 @@ function ofExceptionalPromise(promise) {
   });
 }
 
-module.exports = function create(imageName, options = DEFAULT_OPTIONS) {
-  const docker = new dockerCLI.Docker(options);
-  const command = `pull ${imageName}`;
-  log(`executing: ${command}`);
-
-  if (ENVIRONMENT == "docker") {
+module.exports = class NodeRunners {
+  static creteDockerRunner(imageName, options = DEFAULT_OPTIONS) {
+    const docker = new dockerCLI.Docker(options);
+    const command = `pull ${imageName}`;
+    log(`executing: ${command}`);
     return ofExceptionalPromise(docker.command(command)).then(
-      () => new LocalDockerNodeRunner(imageName, docker)
+        () => new LocalDockerNodeRunner(imageName, docker)
     );
-  } else if (ENVIRONMENT == "local") {
-    return new Promise.resolve();
+  }
+
+  static createLoggableRunner() {
+    return Promise.resolve(new LoggableNodeRunner());
   }
 };

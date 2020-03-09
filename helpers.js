@@ -25,7 +25,7 @@ module.exports = {
     }
   },
   generateUUID(role) {
-    if (ENVIRONMENT == "local") {
+    if (ENVIRONMENT === "local") {
       console.log(
         `PLEASE ADD UUID - ${uuidv4()} TO YOUR ${role} NODE AS ENV VARIABLE `
       );

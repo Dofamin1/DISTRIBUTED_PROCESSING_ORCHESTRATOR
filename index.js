@@ -1,39 +1,12 @@
 const {log, levels, generateUUID} = require("./helpers");
-const EventController = require("./eventController");
 const NodeRunners = require("./node/DockerNodeRunner");
 const {ENVIRONMENT} = process.env;
 // noinspection SpellCheckingInspection
 
 const DEFAULT_TIMEOUT = 10000;
 
-function ofDelayPromise(promise, timeout) {
-  return new Promise((resolve, reject) => {
-    let isComplete = false;
-    const timeoutHandler = () => {
-      if (!isComplete) {
-        reject(new Error("Time is out"));
-        isComplete = true;
-      }
-    };
-    setTimeout(timeoutHandler, timeout);
-    promise.then(res => {
-      if (!isComplete) {
-        resolve(res);
-        isComplete = true;
-      }
-    });
-    promise.catch(e => {
-      if (!isComplete) {
-        reject(e);
-        isComplete = true;
-      }
-    })
-  })
-}
-
 class Orchestrator {
   constructor(nodeRunner, timeout = DEFAULT_TIMEOUT) {
-    this.eventController = new EventController();
     this.observedNodes = [];
     this.nodeRunner = nodeRunner;
     this.timeout = timeout;
@@ -42,40 +15,10 @@ class Orchestrator {
 
   async listenNodes() {
     log("Status is being checked");
-    return this._sendEvents()
-      .then(() => this._publishNodeList())
-      .catch(() => this._runFailedNodes())
-      .then(() => this.statusLast.clear())
-      .then(() => this.listenNodes());
+    //TODO: implement
   }
 
-  _sendEvents() {
-    return Promise.all(this.observedNodes.map(node => {
-        let isFailed = false;
-        return new Promise((resolve, reject) => {
-          let isComplete = false;
-
-          this.eventController.sendEvent({type: `status_${node.uuid}`}, res => {
-            if (isFailed) {
-              log(`Rejected status from UUID: ${res.uuid} with role: ${res.role}`, levels.DEBUG)
-            } else {
-              log(`There is status from UUID: ${res.uuid} with role: ${res.role}`, levels.DEBUG);
-              this.statusLast.set(res.uuid, res.role);
-            }
-            resolve();
-            isComplete = true;
-          });
-          const handler = () => {
-            if (!isComplete) {
-              isFailed = true;
-              reject();
-            }
-          };
-          setTimeout(handler, this.timeout);
-        })
-      })
-    );
-  };
+  
 
   runNodes() {
     return Promise.all(
@@ -137,13 +80,6 @@ class Orchestrator {
       } else {
         resolve(0);
       }
-    });
-  }
-
-  _publishNodeList() {
-    this.eventController.publishEvent({
-      eventName: "nodes_list",
-      val: Array.from(this.statusLast.keys())
     });
   }
 }

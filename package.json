@@ -23,6 +23,7 @@
     "docker-cli-js": "^2.7.1",
     "ioredis": "^4.16.0",
     "serialize-javascript": "^3.0.0",
-    "uuid": "latest"
+    "uuid": "latest",
+    "ws": "^7.2.2"
   }
 }

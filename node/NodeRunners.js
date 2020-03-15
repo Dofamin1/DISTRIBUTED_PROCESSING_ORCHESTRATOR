@@ -13,12 +13,6 @@ class LocalDockerNodeRunner {
     this.imageName = imageName;
   }
 
-  try(command) {
-    return new Promise(resolve => {
-      command.then(() => resolve()).catch(() => resolve);
-    });
-  }
-
   run({ host, port, args, nodeUUID }) {
     const command = `run --net="host" -d --name ${nodeUUID} ${this.imageName} ${args}`;
     log(`executing: ${command}`);
@@ -40,12 +34,6 @@ class LocalDockerNodeRunner {
 }
 
 class LoggableNodeRunner {
-  try(command) {
-    return new Promise(resolve => {
-      command.then(() => resolve()).catch(() => resolve);
-    });
-  }
-
   run({ args, nodeUUID }) {
     log(`Run node with UUID: ${nodeUUID}`, levels.DEBUG);
     return Promise.resolve();

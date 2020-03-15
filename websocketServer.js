@@ -46,4 +46,4 @@ class WebSocketServer {
     }
 }
 
-module.exports = WebSocketServer
+module.exports = WebSocketServer;

@@ -1,4 +1,3 @@
-
 const serialize = require('serialize-javascript');
 
 const STACK_NAME = 'stack';

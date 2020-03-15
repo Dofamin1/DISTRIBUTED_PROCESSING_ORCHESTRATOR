@@ -1,55 +1,45 @@
 const {log, levels, generateUUID} = require("./helpers");
 const NodeRunners = require("./node/DockerNodeRunner");
-const WebsocketServer = require('./websocketServer')
+const WebsocketServer = require('./websocketServer');
 const {ENVIRONMENT} = process.env;
-// noinspection SpellCheckingInspection
-
 const NODE_ALIVE_TIMEOUT = 10000;
 
-class Orchestrator {
+class WebsocketOrchestrator {
   constructor(nodeRunner, nodeAliveTimeout = NODE_ALIVE_TIMEOUT) {
     this.observedNodes = [];
     this.nodeRunner = nodeRunner;
     this.nodeAliveTimeout = nodeAliveTimeout;
-    this.websocketServer = new WebsocketServer()
+    this.websocketServer = new WebsocketServer();
     this.statusLast = new Map();
   }
 
   async listenNodes() {
-    this._listenToNodesStatus();
-  }
-
-  _listenToNodesStatus() {
-    const getNodeAliveTimer = uuid => setTimeout(() => this._onNodeFailedHandeler(uuid), this.nodeAliveTimeout)
+    const getNodeAliveTimer = uuid => {
+      setTimeout(() => this._onNodeFailedHandler(uuid), this.nodeAliveTimeout);
+    };
 
     const callback = res => {
-        const { role, uuid } = JSON.parse(res);
-        this.statusLast.set(uuid, role);
+      const {role, uuid} = JSON.parse(res);
+      this.statusLast.set(uuid, role);
 
-        let node = this.observedNodes.find(c => c.uuid == uuid) || null;
+      let node = this.observedNodes.find(c => c.uuid === uuid) || null;
+      if (node) {
+        clearTimeout(node.failTimeout);
+        node.failTimeout = getNodeAliveTimer(uuid)
+      } else {
+        node = {uuid, role, connection: ws, failTimeout: getNodeAliveTimer(uuid)};
+        this.observedNodes.push(node);
+      }
+    };
 
-        if(node) {
-            clearTimeout(node.failTimeout);
-            node.failTimeout = getNodeAliveTimer(uuid)
-        }else {
-            node = { uuid, role,  connection: ws, failTimeout: getNodeAliveTimer(uuid) };
-            this.observedNodes.push(node);
-        }            
-    }
-
-    this.websocketServer.allConnectionsListenToEvent({ event: 'status', callback });
+    this.websocketServer.allConnectionsListenToEvent({event: 'status', callback});
   }
-  
-  _onNodeFailedHandeler(uuid) {
-    this.statusLast.delete(uuid);
-    this._runFailedNodes();
-  }
-  
 
   runNodes() {
     return Promise.all(
       this.observedNodes.map(node => this._runNode(node))
-    ).then(() => log(`Nodes are run`));
+    )
+      .then(() => log(`Nodes are run`));
   }
 
   withNodes(nodes) {
@@ -71,7 +61,8 @@ class Orchestrator {
           .stop({nodeUUID: node.uuid})
           .then(() => this.nodeRunner.remove({nodeUUID: node.uuid}))
       )
-    ).then(() => log("Instances are turned of and removed"));
+    )
+    .then(() => log("Instances are turned of and removed"));
   }
 
   _runNode(node) {
@@ -83,6 +74,11 @@ class Orchestrator {
 
   _cleanUpNode(node) {
     return this.nodeRunner.remove({nodeUUID: node.uuid});
+  }
+
+  _onNodeFailedHandler(uuid) {
+    this.statusLast.delete(uuid);
+    this._runFailedNodes();
   }
 
   _runFailedNodes() {
@@ -121,9 +117,9 @@ const nodeRunnerPromise = ENVIRONMENT === 'docker' ?
 
 nodeRunnerPromise
   .then(nodeRunner =>
-    new Orchestrator(nodeRunner).withNodes([
-      {uuid: MASTER, role: MASTER},
-      {uuid: WORKER, role: WORKER}
+    new WebsocketOrchestrator(nodeRunner).withNodes([
+      {host: 'localhost', port: 8000, uuid: MASTER, role: MASTER},
+      {host: 'localhost', port: 8000, uuid: WORKER, role: WORKER}
     ])
   )
   .then(orchestrator =>

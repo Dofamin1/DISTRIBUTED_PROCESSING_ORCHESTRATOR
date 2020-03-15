@@ -29,14 +29,18 @@ function initServer(port) {
 class WebSocketServer {
   constructor(port) {
     this.server = initServer(port);
-    this.connections = [];
+    this.workerConnections = new Map();
+    this.masterConnection = null;
+    this.monitorConnection = null;
     this.events = new Map();
     this.server.on('connection', (connection) => {
       log(`Accept connection`, levels.INFO);
 
-      this.connections.push(connection);
       connection.on('message', (msg) => {
         const jsonMsg = JSON.parse(msg);
+
+        if(jsonMsg.event == 'status') this._saveConnectionByRole(jsonMsg.data, connection) //TODO: bad position for this if statment
+
         const callback = this.events.get(jsonMsg.event);
         if (callback) {
           callback(jsonMsg);
@@ -45,9 +49,31 @@ class WebSocketServer {
     });
   }
 
-
   addListenEvent(event, callback) {
     this.events.set(event, callback);
+  }
+
+  sendEvent({event, data}, connection) {
+    const body = JSON.stringify({event, data});
+
+    connection.send(body)
+  }
+
+  sendEventToMaster({event, data}) {
+    this.sendEvent({event, data}, this.masterConnection);
+  }
+  sendEventToMonitor({event, data}) {
+    this.sendEvent({event, data}, this.monitorConnection);
+  }
+
+  _saveConnectionByRole({role, uuid}, connection) {
+    const handlers = {
+      monitor: connection => this.monitorConnection = connection,
+      master: connection => this.masterConnection = connection,
+      worker: connection => this.workerConnections.push(connection)
+    }
+    const handler = handlers[role];
+    handler(connection);
   }
 }
 

@@ -1,6 +1,7 @@
-const {log, levels, generateUUID, now} = require("./helpers");
+const {log, levels,  now} = require("./helpers");
 const NodeRunners = require("./node/NodeRunners");
 const WebSocketServer = require('./websocketServer');
+const MonitorCommunicator = require('./monitorCommunicator')
 const {ENVIRONMENT} = process.env;
 const NODE_ALIVE_TIMEOUT = 10000;
 
@@ -14,10 +15,13 @@ function tryPromise(promise) {
 class WebsocketOrchestrator {
   constructor(nodeRunner, nodeAliveTimeout = NODE_ALIVE_TIMEOUT, port = 8080, host = 'localhost') {
     this.websocketServer = new WebSocketServer(port);
+    this.monitorCommunicator = new MonitorCommunicator(this.websocketServer);
+    this.monitorCommunicator.setContext(this);
     this.nodeAliveTimeout = nodeAliveTimeout;
     this.nodeRunner = nodeRunner;
     this.nodesToLastTime = new Map();
     this.observedNodes = new Map();
+    this.aliveNodes = new Map();
     this.nodesRole = new Map();
     this.port = port;
     this.host = host;
@@ -28,6 +32,7 @@ class WebsocketOrchestrator {
       this.nodesToLastTime.forEach((time, node) => {
         if (time + this.nodeAliveTimeout < now()) {
           log(`Node ${node.uuid} has been failed`);
+          this.aliveNodes.remove(node.uuid);
           this._cleanUpNode(node)
             .then(() => this._runNode(node));
         }
@@ -38,6 +43,7 @@ class WebsocketOrchestrator {
       const {uuid, role} = res.data;
       const node = this.observedNodes.get(uuid);
       if (node) {
+        this.aliveNodes.set(uuid, node);
         this.nodesToLastTime.set(node, now());
         log(`Status has been accepted: {role ${role}, uuid: ${uuid}}`, levels.DEBUG);
       }

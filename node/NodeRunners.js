@@ -14,7 +14,9 @@ class LocalDockerNodeRunner {
   }
 
   run({ host, port, args, nodeUUID }) {
-    const command = `run --net="host" -d --name ${nodeUUID} ${this.imageName} ${args}`;
+    let argsString = '';
+    args.forEach(arg => argsString += ' -e ' + arg);
+    const command = `run --network=host ${argsString} -d --name ${nodeUUID} ${this.imageName}`;
     log(`executing: ${command}`);
     return this.docker.command(command);
   }

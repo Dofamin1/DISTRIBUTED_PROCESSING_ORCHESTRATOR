@@ -8,7 +8,7 @@ function tryPromise(promise) {
   return new Promise(resolve => {
     promise.then(() => resolve())
       .catch(() => resolve());
-  })
+  });
 }
 
 class WebsocketOrchestrator {
@@ -48,7 +48,7 @@ class WebsocketOrchestrator {
     return Promise.all(
       [...this.observedNodes.values()]
         .map(node => this._runNode(node))
-    )
+      )
       .then(() => log(`Nodes are run`));
   }
 
@@ -75,7 +75,11 @@ class WebsocketOrchestrator {
 
   _runNode(node) {
     return this.nodeRunner.run({
-      args: `FIRST_START_NODE_STATUS=${node.role} UUID=${node.uuid} WS_HOST=ws://${this.host}:${this.port}`,
+      args: [
+        `FIRST_START_NODE_STATUS="${node.role}"`,
+        `UUID="${node.uuid}"`,
+        `WS_HOST="ws://${this.host}:${this.port}"`
+      ],
       nodeUUID: node.uuid
     });
   }

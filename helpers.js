@@ -1,5 +1,5 @@
 const uuidv4 = require("uuid/v4");
-const { ENVIRONMENT } = process.env;
+const {ENVIRONMENT} = process.env;
 const levels = {
   DEBUG: 1,
   INFO: 2,
@@ -18,7 +18,7 @@ module.exports = {
     throw new Error(err.message || "unknown error");
   },
   log(message, level = levels.INFO) {
-    const { LOGGER, LEVEL = levels.INFO } = process.env;
+    const {LOGGER, LEVEL = levels.INFO} = process.env;
     if (LOGGER && LEVEL <= level) {
       const handler = handlers.get(level);
       handler(message);
@@ -31,5 +31,8 @@ module.exports = {
       );
     }
     return uuidv4();
+  },
+  now() {
+    return Date.now();
   }
 };

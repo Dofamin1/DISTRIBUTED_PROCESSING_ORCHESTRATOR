@@ -1,55 +1,63 @@
-const {log, levels, generateUUID} = require("./helpers");
-const NodeRunners = require("./node/DockerNodeRunner");
-const WebsocketServer = require('./websocketServer');
+const {log, levels, generateUUID, now} = require("./helpers");
+const NodeRunners = require("./node/NodeRunners");
+const WebSocketServer = require('./websocketServer');
 const {ENVIRONMENT} = process.env;
 const NODE_ALIVE_TIMEOUT = 10000;
 
+function tryPromise(promise) {
+  return new Promise(resolve => {
+    promise.then(() => resolve())
+      .catch(() => resolve());
+  });
+}
+
 class WebsocketOrchestrator {
-  constructor(nodeRunner, nodeAliveTimeout = NODE_ALIVE_TIMEOUT) {
-    this.observedNodes = [];
-    this.nodeRunner = nodeRunner;
+  constructor(nodeRunner, nodeAliveTimeout = NODE_ALIVE_TIMEOUT, port = 8080, host = 'localhost') {
+    this.websocketServer = new WebSocketServer(port);
     this.nodeAliveTimeout = nodeAliveTimeout;
-    this.websocketServer = new WebsocketServer();
-    this.statusLast = new Map();
+    this.nodeRunner = nodeRunner;
+    this.nodesToLastTime = new Map();
+    this.observedNodes = new Map();
+    this.nodesRole = new Map();
+    this.port = port;
+    this.host = host;
   }
 
   async listenNodes() {
-    const getNodeAliveTimer = uuid => {
-      setTimeout(() => this._onNodeFailedHandler(uuid), this.nodeAliveTimeout);
-    };
+    setInterval(() => {
+      this.nodesToLastTime.forEach((time, node) => {
+        if (time + this.nodeAliveTimeout < now()) {
+          log(`Node ${node.uuid} has been failed`);
+          this._cleanUpNode(node)
+            .then(() => this._runNode(node));
+        }
+      })
+    }, this.nodeAliveTimeout);
 
-    const callback = res => {
-      const {role, uuid} = JSON.parse(res);
-      this.statusLast.set(uuid, role);
-
-      let node = this.observedNodes.find(c => c.uuid === uuid) || null;
+    this.websocketServer.addListenEvent('status', res => {
+      const {uuid, role} = res.data;
+      const node = this.observedNodes.get(uuid);
       if (node) {
-        clearTimeout(node.failTimeout);
-        node.failTimeout = getNodeAliveTimer(uuid)
-      } else {
-        node = {uuid, role, connection: ws, failTimeout: getNodeAliveTimer(uuid)};
-        this.observedNodes.push(node);
+        this.nodesToLastTime.set(node, now());
+        log(`Status has been accepted: {role ${role}, uuid: ${uuid}}`, levels.DEBUG);
       }
-    };
-
-    this.websocketServer.allConnectionsListenToEvent({event: 'status', callback});
+    });
   }
 
   runNodes() {
     return Promise.all(
-      this.observedNodes.map(node => this._runNode(node))
-    )
+      [...this.observedNodes.values()]
+        .map(node => this._runNode(node))
+      )
       .then(() => log(`Nodes are run`));
   }
 
   withNodes(nodes) {
-    this.observedNodes.push(...nodes);
-    nodes.forEach(node => this.statusLast.set(node.uuid, node.role));
-    log(
-      `Nodes {alive: ${this.statusLast.size}, total: ${
-        this.observedNodes.length
-      }}`
-    );
+    nodes.forEach(node => {
+      this.observedNodes.set(node.uuid, node);
+      this.nodesRole.set(node.uuid, node.role);
+      this.nodesToLastTime.set(node, now());
+    });
     return this;
   }
 
@@ -67,42 +75,23 @@ class WebsocketOrchestrator {
 
   _runNode(node) {
     return this.nodeRunner.run({
-      args: `FIRST_START_NODE_STATUS=${node.isMaster} UUID=${node.uuid}`,
+      args: [
+        `FIRST_START_NODE_STATUS="${node.role}"`,
+        `UUID="${node.uuid}"`,
+        `WS_HOST="ws://${this.host}:${this.port}"`
+      ],
       nodeUUID: node.uuid
     });
   }
 
   _cleanUpNode(node) {
-    return this.nodeRunner.remove({nodeUUID: node.uuid});
-  }
-
-  _onNodeFailedHandler(uuid) {
-    this.statusLast.delete(uuid);
-    this._runFailedNodes();
-  }
-
-  _runFailedNodes() {
-    return new Promise(resolve => {
-      log(
-        `Nodes {alive: ${this.statusLast.size}, total: ${
-          this.observedNodes.length
-        }}`
-      );
-      if (this.statusLast.size !== this.observedNodes.length) {
-        const failedNodes = this.observedNodes.filter(
-          node => !this.statusLast.get(node.uuid)
-        );
-        Promise.all(
-          failedNodes.map(node =>
-            this._cleanUpNode(node).then(() => this._runNode(node))
+    return tryPromise(
+      this.nodeRunner.stop({nodeUUID: node.uuid})
+        .then(() => tryPromise(
+          this.nodeRunner.remove({nodeUUID: node.uuid})
           )
         )
-          .then(() => resolve(failedNodes.length))
-          .then(() => failedNodes.length !== 0 ? log(`Failed nodes is recovered`) : null);
-      } else {
-        resolve(0);
-      }
-    });
+    );
   }
 }
 
@@ -110,17 +99,18 @@ const WORKER = "worker";
 const MASTER = "master";
 
 const nodeRunnerPromise = ENVIRONMENT === 'docker' ?
-  NodeRunners.creteDockerRunner('nodes') :
+  NodeRunners.creteDockerRunner('vorobyov/processing-nodes') :
   ENVIRONMENT === 'local' ?
     NodeRunners.createLoggableRunner() :
     Promise.reject(new Error("ENVIRONMENT is not defined"));
 
 nodeRunnerPromise
   .then(nodeRunner =>
-    new WebsocketOrchestrator(nodeRunner).withNodes([
-      {host: 'localhost', port: 8000, uuid: MASTER, role: MASTER},
-      {host: 'localhost', port: 8000, uuid: WORKER, role: WORKER}
-    ])
+    new WebsocketOrchestrator(nodeRunner)
+      .withNodes([
+        {host: 'localhost', port: 8000, uuid: MASTER, role: MASTER},
+        {host: 'localhost', port: 7000, uuid: WORKER, role: WORKER}
+      ])
   )
   .then(orchestrator =>
     orchestrator

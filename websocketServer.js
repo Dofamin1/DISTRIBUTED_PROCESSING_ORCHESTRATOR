@@ -39,15 +39,24 @@ class WebSocketServer {
         const jsonMsg = JSON.parse(msg);
         const callback = this.events.get(jsonMsg.event);
         if (callback) {
-          callback(jsonMsg);
+          const result = callback(jsonMsg);
+          connection.send(JSON.stringify({
+            event: jsonMsg.event,
+            result
+          }));
         }
       });
     });
   }
 
-
   addListenEvent(event, callback) {
     this.events.set(event, callback);
+  }
+
+  sendEvent(event, data) {
+    this.connections.forEach(connection => {
+      connection.send(JSON.stringify({event, data}))
+    })
   }
 }
 

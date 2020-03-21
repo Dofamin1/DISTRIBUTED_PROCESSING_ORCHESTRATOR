@@ -1,9 +1,11 @@
-module.exports = class GraphBuilder {
+const EMPTY_GRAPH = 'digraph D {}';
+module.exports = class GraphVizBuilder {
   constructor(clusterSize) {
     this.clusterSize = clusterSize;
   }
 
   build(aliveNodes) {
+    if (aliveNodes.size === 0) return EMPTY_GRAPH;
     let nodes = {};
     aliveNodes.forEach((role, uuid) => {
       const prev = nodes[role] ? nodes[role] : [];

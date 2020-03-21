@@ -27,10 +27,12 @@ function initServer(port) {
 }
 
 class WebSocketServer {
-  constructor(port) {
+  constructor(host, port) {
     this.server = initServer(port);
     this.connections = [];
     this.events = new Map();
+    this.host = host;
+    this.port = port;
     this.server.on('connection', (connection) => {
       log(`Accept connection`, levels.INFO);
 
@@ -56,7 +58,7 @@ class WebSocketServer {
   sendEvent(event, data) {
     this.connections.forEach(connection => {
       connection.send(JSON.stringify({event, data}))
-    })
+    });
   }
 }
 

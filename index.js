@@ -1,9 +1,12 @@
 const {log, levels, generateUUID, now} = require("./helpers");
-const NodeRunners = require("./node/NodeRunners");
+const MonitoringService = require("./monitoringService");
 const WebSocketServer = require('./websocketServer');
-const {ENVIRONMENT} = process.env;
+const RedisDbClient = require('./db/redisDbClient');
+const NodeRunners = require("./node/NodeRunners");
+const GraphVizBuilder = require('./graph');
+const Redis = require('ioredis');
 const NODE_ALIVE_TIMEOUT = 10000;
-const GraphBuilder = require('./graph');
+const {ENVIRONMENT} = process.env;
 
 function tryPromise(promise) {
   return new Promise(resolve => {
@@ -13,23 +16,14 @@ function tryPromise(promise) {
 }
 
 class WebsocketOrchestrator {
-  constructor({nodeRunner, port, host, graphBuilder, nodeAliveTimeout = NODE_ALIVE_TIMEOUT}) {
-    this.websocketServer = new WebSocketServer(port);
+  constructor(nodeRunner, server, nodeAliveTimeout = NODE_ALIVE_TIMEOUT) {
     this.nodeAliveTimeout = nodeAliveTimeout;
+    this.websocketServer = server;
     this.nodeRunner = nodeRunner;
     this.nodesToLastTime = new Map();
     this.observedNodes = new Map();
-    this.nodesRole = new Map();
-    this.port = port;
-    this.host = host;
-    this.graphBuilder = graphBuilder;
     this.aliveNodes = new Map();
-  }
-
-  async monitoring() {
-    setInterval(() => {
-      this.websocketServer.sendEvent('nodes_graph', this.graphBuilder.build(this.aliveNodes))
-    }, 5000);
+    this.nodesRole = new Map();
   }
 
   async listenNodes() {
@@ -71,6 +65,7 @@ class WebsocketOrchestrator {
     return this;
   }
 
+  // noinspection JSUnusedGlobalSymbols
   shutDown() {
     log("init shutdown");
     return Promise.all(
@@ -88,7 +83,7 @@ class WebsocketOrchestrator {
       args: [
         `FIRST_START_NODE_STATUS="${node.role}"`,
         `UUID="${node.uuid}"`,
-        `WS_HOST="ws://${this.host}:${this.port}"`
+        `WS_HOST="ws://${this.websocketServer.host}:${this.websocketServer.port}"`
       ],
       nodeUUID: node.uuid
     })
@@ -106,33 +101,34 @@ class WebsocketOrchestrator {
   }
 }
 
-const WORKER = "worker";
-const MASTER = "master";
+function initMonitoringService(orchestrator, webSocketServer) {
+  const graphBuilder = new GraphVizBuilder(3);
+  const redisDbClient = new RedisDbClient(new Redis());
+  return new MonitoringService(orchestrator, webSocketServer, graphBuilder, redisDbClient);
+}
 
+function initOrchestrator(nodeRunner, server) {
+  const WORKER = "worker";
+  const MASTER = "master";
+  return new WebsocketOrchestrator(nodeRunner, server)
+    .withNodes([
+      {host: 'localhost', port: 8000, uuid: generateUUID(), role: MASTER},
+      {host: 'localhost', port: 7000, uuid: generateUUID(), role: WORKER},
+      {host: 'localhost', port: 6000, uuid: generateUUID(), role: WORKER}
+    ]);
+}
+
+const webSocketServer = new WebSocketServer('host.docker.internal', 8088);
 const nodeRunnerPromise = ENVIRONMENT === 'docker' ?
   NodeRunners.creteDockerRunner('vorobyov/processing-nodes') :
   ENVIRONMENT === 'local' ?
     NodeRunners.createLoggableRunner() :
     Promise.reject(new Error("ENVIRONMENT is not defined"));
 
-nodeRunnerPromise
-  .then(nodeRunner =>
-    new WebsocketOrchestrator({
-      nodeRunner,
-      clusterSize: 3,
-      port: 8088,
-      host: 'host.docker.internal',
-      graphBuilder: new GraphBuilder(3)
-    })
-      .withNodes([
-        {host: 'localhost', port: 8000, uuid: generateUUID(), role: MASTER},
-        {host: 'localhost', port: 7000, uuid: generateUUID(), role: WORKER},
-        {host: 'localhost', port: 6000, uuid: generateUUID(), role: WORKER}
-      ])
-  )
-  .then(orchestrator =>
-    orchestrator
-      .runNodes()
-      .then(() => orchestrator.listenNodes())
-      .then(() => orchestrator.monitoring())
-  );
+(async () => {
+  const orchestrator = initOrchestrator(await nodeRunnerPromise, webSocketServer);
+  initMonitoringService(orchestrator, webSocketServer)
+    .monitoring();
+  orchestrator.runNodes()
+    .then(() => orchestrator.listenNodes());
+})();

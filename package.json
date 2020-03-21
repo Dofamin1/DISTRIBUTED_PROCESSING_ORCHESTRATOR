@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node ./index.js"
+    "start": "ENVIRONMENT=docker LOGGER=true LEVEL=1 node ./index.js",
+    "start_local": "ENVIRONMENT=local LOGGER=true LEVEL=1 node ./index.js"
   },
   "repository": {
     "type": "git",
@@ -18,6 +19,11 @@
   },
   "homepage": "https://github.com/Dofamin1/DISTRIBUTED_PROCESSING_ORCHESTRATOR#readme",
   "dependencies": {
-    "cote": "^1.0.0"
+    "cote": "^1.0.0",
+    "docker-cli-js": "^2.7.1",
+    "ioredis": "^4.16.0",
+    "serialize-javascript": "^3.0.0",
+    "uuid": "latest",
+    "ws": "^7.2.2"
   }
 }

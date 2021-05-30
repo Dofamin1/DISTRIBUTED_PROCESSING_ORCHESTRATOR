@@ -24,6 +24,6 @@
     "ioredis": "^4.16.0",
     "serialize-javascript": "^3.0.0",
     "uuid": "latest",
-    "ws": "^7.2.2"
+    "ws": "^7.4.6"
   }
 }
